@@ -6,6 +6,9 @@
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Python](https://img.shields.io/badge/Python-3.13+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![AWS Bedrock](https://img.shields.io/badge/AWS%20Bedrock-Converse%20API-FF9900?style=for-the-badge&logo=amazonwebservices&logoColor=white)](https://aws.amazon.com/bedrock/)
+[![AWS EC2](https://img.shields.io/badge/AWS%20EC2-t3.micro%20Free%20Tier-FF9900?style=for-the-badge&logo=amazonec2&logoColor=white)](https://aws.amazon.com/ec2/)
+[![Cloudflare Tunnel](https://img.shields.io/badge/Cloudflare-Quick%20Tunnel-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 [![Neon](https://img.shields.io/badge/Database-Neon%20Serverless%20Postgres-00E599?style=for-the-badge&logo=postgresql&logoColor=black)](https://neon.tech)
 [![pgvector](https://img.shields.io/badge/pgvector-HNSW%20Vector-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 [![LangChain](https://img.shields.io/badge/LangChain-1.3+-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://www.langchain.com)
@@ -15,7 +18,7 @@
 
 **CourseCompass** is a full-stack, working AI Academic Advisor prototype and Retrieval-Augmented Generation (RAG) platform. It unifies scattered university course documents, relational degree structures, and multi-dimensional academic policy matrices into a consultative advising system.
 
-[The Engineering Story](#-the-engineering-story) • [Design Decisions](#-key-design-decisions--architectural-trade-offs) • [Architecture](#-system-architecture) • [Consultative Advising](#-how-it-works-the-consultative-protocol-in-action) • [Quick Start](#-quick-start) • [Documentation Hub](#-documentation-hub)
+[The Engineering Story](#-the-engineering-story) • [Design Decisions](#-key-design-decisions--architectural-trade-offs) • [Architecture](#-system-architecture) • [Consultative Advising](#-how-it-works-the-consultative-protocol-in-action) • [Deployment](#-aws-ec2--cloudflare-tunnel-deployment) • [Quick Start](#-quick-start) • [Documentation Hub](#-documentation-hub)
 
 </div>
 
@@ -216,8 +219,64 @@ Here is an authentic transcript demonstrating how CourseCompass handles incomple
 | **Reranker** | `BAAI/bge-reranker-base` | Cross-encoder architecture with full cross-attention over query-passage pairs; reorders candidate pools with high semantic precision. |
 | **Agent Framework** | LangChain 1.3, LangGraph | Robust ReAct agent loop supporting multi-tool orchestration, state reconstruction, and conversation memory. |
 | **LLM Inference** | AWS Bedrock Converse API | High-throughput serverless foundation model invocation using `openai.gpt-oss-120b-1:0`. |
+| **Cloud Hosting** | AWS EC2 (`t3.micro`), Ubuntu 24.04 LTS | 100% Free-Tier eligible cloud compute with 15GB gp3 storage and 2GB automated swap protection. |
+| **Ingress & Security** | Cloudflare Quick Tunnels | Encrypted outbound QUIC/HTTP2 tunnels providing trusted public HTTPS (`*.trycloudflare.com`) with zero open inbound firewall ports. |
 | **Frontend Framework** | React 19, TypeScript, Vite 8 | Ultra-fast single-page application with modern React compiler optimizations and zero-friction build times. |
 | **Design System** | Tailwind CSS v4, `@base-ui/react` | Editorial styling system inspired by Anthropic (warm cream canvas `#faf9f5`, coral accent `#cc785c`, dark code surfaces `#181715`). |
+
+---
+
+## ☁️ AWS EC2 & Cloudflare Tunnel Deployment
+
+CourseCompass is engineered for zero-cost, enterprise-grade cloud deployment using an **AWS EC2 micro-architecture** paired with **Cloudflare Quick Tunnels**.
+
+```mermaid
+flowchart LR
+    Browser["Student Web Client\n(Browser / Mobile)"] -->|"HTTPS / WSS (Valid SSL)"| CF["Cloudflare Edge Network\n(*.trycloudflare.com)"]
+    CF -->|"Outbound QUIC / HTTP2 Tunnel\n(Zero Inbound Ports 80/443)"| CFTunnel["cloudflared daemon\n(coursecompass-tunnel.service)"]
+    
+    subgraph EC2["AWS EC2 t3.micro (ap-south-1, 15GB gp3, 2GB Swap)"]
+        CFTunnel -->|"Local Reverse Proxy (127.0.0.1:8000)"| App["FastAPI 0.141+ Microservice\n(coursecompass-app.service)"]
+        App -->|"Single-Port SPA Serving\n(/ & /assets/*)"| Dist["Compiled React 19 SPA\n(frontend/dist)"]
+        App -->|"Native RAG Ingestion & Query"| Models["BGE Small Embedder\n(CPU PyTorch)"]
+    end
+    
+    App -->|"TLS / pgvector Queries"| Neon[("Neon Serverless Postgres\n(Cloud Database)")]
+    App -->|"AWS Signature v4\nConverse API"| Bedrock["AWS Bedrock\n(openai.gpt-oss-120b-1:0)"]
+```
+
+### Production Architecture Highlights
+- **100% Free Tier Eligible**: Targets `t3.micro` (1GB RAM, 2 vCPUs) in `ap-south-1` (Mumbai) with 15GB gp3 root volume.
+- **Zero Inbound Firewall Risk**: No open inbound ports 80 or 443. Cloudflare Tunnel establishes an encrypted outbound connection to Cloudflare's edge network, provisioning an instant, trusted public SSL certificate.
+- **Single-Port Production Serving**: Eliminates dual-server configurations. FastAPI serves the compiled React 19 SPA directly alongside `/api/*` endpoints on port 8000, eliminating CORS issues entirely.
+- **RAM & Disk Safeguards**: Automatically configures a 2GB swapfile (preventing out-of-memory errors on 1GB RAM) and enforces CPU-only PyTorch wheels (`--index-url https://download.pytorch.org/whl/cpu`) to avoid multi-gigabyte CUDA bloat.
+- **Decoupled Systemd Daemons**: `coursecompass-tunnel.service` maintains the public link while `coursecompass-app.service` runs the backend. Code updates can be reloaded in 3 seconds without invalidating the public URL.
+
+### One-Click Deployment
+
+```bash
+# 1. Launch AWS EC2 instance with automated cloud-init bootstrap
+./deploy/launch_instance.sh
+
+# 2. Retrieve live public HTTPS URL
+./deploy/manage_ec2.sh url
+```
+
+### Instance Management & Lifecycle CLI
+
+The [`deploy/manage_ec2.sh`](deploy/manage_ec2.sh) script provides comprehensive day-to-day lifecycle controls:
+
+| Command | Action | Billing Impact |
+| :--- | :--- | :--- |
+| `./deploy/manage_ec2.sh status` | View instance state, public IP, and tunnel health | Informational |
+| `./deploy/manage_ec2.sh url` | Fetch current active Cloudflare HTTPS URL | Informational |
+| `./deploy/manage_ec2.sh ssh` | Open instant interactive SSH session to the instance | $0.00 |
+| `./deploy/manage_ec2.sh logs` | Stream real-time cloud-init bootstrap and application logs | Informational |
+| `./deploy/manage_ec2.sh restart-backend` | Reload code/services in 3s **without changing the tunnel URL** | $0.00 |
+| `./deploy/manage_ec2.sh stop` | Pause EC2 compute when idle or between evaluations | **$0.00/hr compute paused** |
+| `./deploy/manage_ec2.sh start` | Resume instance with existing volume and services | Resumes compute |
+| `./deploy/manage_ec2.sh terminate` | Permanently destroy EC2 instance and clean up local state | Cleans up resources |
+
 
 ---
 
@@ -286,6 +345,10 @@ CourseCompass/
 ├── assets/
 │   └── readme/
 │       └── hero.svg                 # Project-native pure SVG hero banner
+├── deploy/                          # One-Click AWS EC2 Deployment Bundle
+│   ├── launch_instance.sh           # Automated t3.micro launcher with AMI & SG discovery
+│   ├── cloud_init_bootstrap.sh      # Root cloud-init bootstrap (2GB swap, uv, systemd)
+│   └── manage_ec2.sh                # Operator CLI (status, url, ssh, restart, stop, start)
 ├── backend/                         # FastAPI Python Backend Microservice
 │   ├── app/
 │   │   ├── main.py                  # API routes, CORS, session endpoints
@@ -360,6 +423,7 @@ For in-depth technical investigations, explore the comprehensive guides in `docs
 | **Relational Curriculum** | ✅ **Seeded & Operational** | Terms 1–8, 250 courses, and elective baskets seeded and queryable in PostgreSQL via read-only SQL sandbox. |
 | **Authentication & Profile** | ✅ **Fully Functional** | JWT authentication with student CGPA, term, and program auto-injected into agent context. |
 | **Frontend Web App** | ✅ **Working Prototype** | React 19 SPA with full markdown rendering, auto-scrolling message history, and collapsible source citations (REST/JSON API). |
+| **Cloud Deployment** | ✅ **Live on AWS EC2** | Single-port production serving on `t3.micro` via Cloudflare Quick Tunnel with 2GB swap and CPU-only PyTorch. |
 | **Automated Test Suite** | 🚧 **In Development** | Retrieval recall unit tests and SQL sandbox security verification in progress. |
 | **Benchmarking Suite** | 🚧 **Planned** | Quantitative RAG evaluation using Ragas (Faithfulness, Answer Relevance) planned for benchmark validation. |
 
