@@ -7,3 +7,5 @@ __pycache__/
 !**/data/benefits_clean.md
 
 .cache/
+deploy/*.pem
+deploy/.ec2_instance_info.env
